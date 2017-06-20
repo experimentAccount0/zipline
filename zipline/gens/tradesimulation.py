@@ -29,8 +29,6 @@ from zipline.gens.sim_engine import (
     MINUTE_END,
     BEFORE_TRADING_START_BAR
 )
-from zipline.protocol import BarData
-from zipline.utils.api_support import ZiplineAPI
 
 log = Logger('Trade Simulation')
 
