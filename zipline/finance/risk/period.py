@@ -43,17 +43,7 @@ choose_treasury = functools.partial(risk.choose_treasury,
 
 class RiskMetricsPeriod(object):
     def __init__(self, start_session, end_session, returns, trading_calendar,
-                 treasury_curves, benchmark_returns, algorithm_leverages=None):
-        if treasury_curves.index[-1] >= start_session:
-            mask = ((treasury_curves.index >= start_session) &
-                    (treasury_curves.index <= end_session))
-
-            self.treasury_curves = treasury_curves[mask]
-        else:
-            # our test is beyond the treasury curve history
-            # so we'll use the last available treasury curve
-            self.treasury_curves = treasury_curves[-1:]
-
+                 benchmark_returns, algorithm_leverages=None):
         self._start_session = start_session
         self._end_session = end_session
         self.trading_calendar = trading_calendar
@@ -104,12 +94,7 @@ class RiskMetricsPeriod(object):
         self.benchmark_volatility = annual_volatility(self.benchmark_returns)
         self.algorithm_volatility = annual_volatility(self.algorithm_returns)
 
-        self.treasury_period_return = choose_treasury(
-            self.treasury_curves,
-            self._start_session,
-            self._end_session,
-            self.trading_calendar,
-        )
+        self.treasury_period_return = 0
         self.sharpe = sharpe_ratio(
             self.algorithm_returns,
         )

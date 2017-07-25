@@ -72,6 +72,7 @@ from zipline.errors import NoFurtherDataError
 from zipline.finance.performance.period import PerformancePeriod
 import zipline.finance.risk as risk
 import zipline.protocol as zp
+from zipline.utils.dummy import DummyPortfolio
 from zipline.utils.pandas_utils import sliding_apply
 
 from . position_tracker import PositionTracker
@@ -83,12 +84,11 @@ class PerformanceTracker(object):
     """
     Tracks the performance of the algorithm.
     """
-    def __init__(self, sim_params, trading_calendar, env, portfolio):
+    def __init__(self, sim_params, trading_calendar, asset_finder, portfolio):
         self.sim_params = sim_params
         self.trading_calendar = trading_calendar
-        self.asset_finder = env.asset_finder
+        self.asset_finder = asset_finder
         self.benchmark_asset = portfolio.benchmark_asset
-        self.treasury_curves = env.treasury_curves
 
         self.period_start = self.sim_params.start_session
         self.period_end = self.sim_params.end_session
@@ -115,8 +115,7 @@ class PerformanceTracker(object):
             self.cumulative_risk_metrics = \
                 risk.RiskMetricsCumulative(
                     self.sim_params,
-                    self.treasury_curves,
-                    self.trading_calendar
+                    self.trading_calendar,
                 )
         elif self.emission_rate == 'minute':
             self.all_benchmark_returns = pd.Series(index=pd.date_range(
@@ -127,9 +126,8 @@ class PerformanceTracker(object):
             self.cumulative_risk_metrics = \
                 risk.RiskMetricsCumulative(
                     self.sim_params,
-                    self.treasury_curves,
                     self.trading_calendar,
-                    create_first_day_stats=True
+                    create_first_day_stats=True,
                 )
 
         # this performance period will span the entire simulation from
@@ -157,7 +155,7 @@ class PerformanceTracker(object):
             # initial cash is your capital base.
             starting_cash=self.capital_base,
             data_frequency=self.sim_params.data_frequency,
-            portfolio=portfolio,
+            portfolio=DummyPortfolio(),
             # the daily period will be calculated for the market day
             period_open=self.market_open,
             period_close=self.market_close,
@@ -483,11 +481,11 @@ class PerformanceTracker(object):
             index=self.cumulative_risk_metrics.cont_index,
             data=self.cumulative_risk_metrics.algorithm_returns_cont)
         acl = self.cumulative_risk_metrics.algorithm_cumulative_leverages
-        cvar = self._calculate_rolling_expected_shortfall(data_portal)
+        es = self._calculate_rolling_expected_shortfall(data_portal)
 
         risk_report = risk.RiskReport(
             algorithm_returns=ars,
-            expected_shortfalls=cvar,
+            expected_shortfalls=es,
             sim_params=self.sim_params,
             benchmark_returns=bms,
             algorithm_leverages=acl,
@@ -499,7 +497,7 @@ class PerformanceTracker(object):
 
     def _calculate_rolling_expected_shortfall(self, data_portal):
         sim_params = self.sim_params
-        lookback_days = zp.DEFAULT_CVAR_LOOKBACK_DAYS
+        lookback_days = zp.DEFAULT_EXPECTED_SHORTFALL_LOOKBACK_DAYS
 
         # Create a data frame of asset weights on each day of the simulation.
         # If an asset was not held on a given date, it is assigned a weight of
@@ -516,7 +514,7 @@ class PerformanceTracker(object):
             lookback_days,
         )
 
-        asset_returns = zp.asset_returns_for_cvar(
+        asset_returns = zp.asset_returns_for_expected_shortfall(
             assets=list(weights.columns),
             benchmark=self.benchmark_asset,
             data_portal=data_portal,
@@ -526,7 +524,7 @@ class PerformanceTracker(object):
         asset_returns_values = asset_returns.values
 
         def rolling_shortfall():
-            cvar_cutoff = zp.DEFAULT_CVAR_CUTOFF
+            expected_shortfall_cutoff = zp.DEFAULT_EXPECTED_SHORTFALL_CUTOFF
             out = np.full(len(weights), np.nan)
 
             # Compute from back to front, since that simplifies the task of
@@ -538,15 +536,17 @@ class PerformanceTracker(object):
                 # TODO: Bail if we don't have enough input data.
                 start = end - lookback_days
                 rets = asset_returns_values[start:end].dot(weights_values[end])
-                out[end] = conditional_value_at_risk(rets, cvar_cutoff)
+                out[end] = conditional_value_at_risk(
+                    rets, expected_shortfall_cutoff,
+                )
                 end -= 1
 
             return pd.Series(out, index=sim_params.sessions)
 
-        def cvar_of_df(df):
+        def expected_shortfall_of_df(df):
             """
-            Given a data frame indexed by date, compute its CVaR according to
-            the asset weights on the last date of the index.
+            Given a data frame indexed by date, compute its expected shortfall
+            according to the asset weights on the last date of the index.
             """
             if len(df) < lookback_days / 2:
                 return np.NaN
@@ -559,24 +559,29 @@ class PerformanceTracker(object):
 
             return conditional_value_at_risk(
                 returns=df.dot(weights_to_use.values),
-                cutoff=zp.DEFAULT_CVAR_CUTOFF,
+                cutoff=zp.DEFAULT_EXPECTED_SHORTFALL_CUTOFF,
             )
 
-        # Compute rolling CVaR over the returns data frame.
-        rolling_cvars = pd.Series(
+        # Compute rolling expected shortfall over the returns data frame.
+        rolling_expected_shortfalls = pd.Series(
             sliding_apply(
                 df=asset_returns.fillna(0),
                 window_length=lookback_days,
-                f=cvar_of_df,
+                f=expected_shortfall_of_df,
                 min_periods=1,
             ),
         )
+
+        # On the very first day of pricing data, expected shortfall cannot be
+        # computed because returns cannot be computed yet.
         if days_before_start == 0:
-            rolling_cvars = pd.Series([np.NaN]).append(rolling_cvars)
+            rolling_expected_shortfalls = \
+                pd.Series([np.NaN]).append(rolling_expected_shortfalls)
         else:
-            rolling_cvars = rolling_cvars[days_before_start - 1:]
-        rolling_cvars.index = sim_params.sessions
+            rolling_expected_shortfalls = \
+                rolling_expected_shortfalls[days_before_start - 1:]
+        rolling_expected_shortfalls.index = sim_params.sessions
 
-        alt_rolling_cvars = rolling_shortfall()
+        alt_rolling_expected_shortfalls = rolling_shortfall()
 
-        return rolling_cvars
+        return rolling_expected_shortfalls
