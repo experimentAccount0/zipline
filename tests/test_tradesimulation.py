@@ -130,7 +130,7 @@ def initialize(context):
         algo.perf_tracker = PerformanceTracker(
             sim_params=self.sim_params,
             trading_calendar=self.trading_calendar,
-            env=self.env,
+            asset_finder=self.asset_finder,
             portfolio=self.portfolio,
         )
 

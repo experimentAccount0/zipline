@@ -140,8 +140,10 @@ def _run(handle_data,
         if first_daily_bar_day != first_minute_bar_day:
             warnings.warn(
                 'Daily bar reader first day ({0}) and minute bar reader first '
-                'day ({1}) differ.'.format(
-                    first_daily_bar_day, first_minute_bar_day,
+                'day ({1}) differ. Using {2}.'.format(
+                    first_daily_bar_day,
+                    first_minute_bar_day,
+                    first_trading_day,
                 ),
             )
 

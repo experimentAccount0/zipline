@@ -1769,6 +1769,12 @@ class WithPortfolio(WithDataPortal):
 
     def init_instance_fixtures(self):
         super(WithPortfolio, self).init_instance_fixtures()
+        self.refresh_portfolio()
+
+    def current_dt_callback(self):
+        return pd.Timestamp('now')
+
+    def refresh_portfolio(self):
         if self.BENCHMARK_SID is not None:
             benchmark_asset = self.asset_finder.retrieve_asset(
                 self.BENCHMARK_SID,
@@ -1778,6 +1784,3 @@ class WithPortfolio(WithDataPortal):
         self.portfolio = Portfolio(
             self.data_portal, self.current_dt_callback, benchmark_asset,
         )
-
-    def current_dt_callback(self):
-        return pd.Timestamp('now')

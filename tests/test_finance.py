@@ -286,6 +286,7 @@ class FinanceTestCase(WithLogger,
             else:
                 alternator = 1
 
+            self.refresh_portfolio()
             tracker = PerformanceTracker(sim_params, self.trading_calendar,
                                          self.env, self.portfolio)
 
