@@ -215,9 +215,9 @@ class Portfolio(object):
         self.start_date = None
         self.positions_value = 0.0
 
-        self.data_portal = data_portal
         self.benchmark_asset = benchmark_asset
 
+        self._data_portal = data_portal
         self._current_dt_callback = current_dt_callback
         self._expiring_cache = ExpiringCache()
         self._cf_cache = {}
@@ -270,29 +270,44 @@ class Portfolio(object):
             # Infer the offset of the given future by comparing it to the
             # upcoming closing contract according to the given date.
             asset_finder = self.data_portal.asset_finder
-            oc = asset_finder.get_ordered_contracts(asset.root_symbol)
-            offset = oc.offset_of_contract(asset.sid, date.value)
-            try:
-                return self._cf_cache[(asset.root_symbol, offset)]
-            except:
-                cf = asset_finder.create_continuous_future(
-                    root_symbol=asset.root_symbol,
-                    offset=offset,
-                    roll_style='volume',
-                    adjustment='mul',
-                )
-                self._cf_cache[(asset.root_symbol, offset)] = cf
-                return cf
+            offset = asset_finder.offset_of_contract(asset, date)
+            return asset_finder.get_continuous_future(
+                root_symbol=asset.root_symbol,
+                offset=offset,
+                roll_style='volume',
+                adjustment='mul',
+            )
         return asset
 
     def expected_shortfall(
-            self, lookback_days=DEFAULT_EXPECTED_SHORTFALL_LOOKBACK_DAYS):
+            self,
+            lookback_days=DEFAULT_EXPECTED_SHORTFALL_LOOKBACK_DAYS,
+            cutoff=DEFAULT_EXPECTED_SHORTFALL_CUTOFF):
         """
         Function for computing expected shortfall (also known as CVaR, or
         Conditional Value at Risk) for the portfolio according to the assets
         currently held and their respective weight in the portfolio.
+
+        Parameters
+        ----------
+
+        lookback_days : int, optional
+            The number of days of asset returns history to use.
+        cutoff : float, optional
+            The percentile cutoff to use for finding the worst returns values.
+
+        Returns
+        -------
+        expected_shortfall : float
+            The expected shortfall of the current portfolio.
+
+        Raises
+        ------
+        InsufficientHistoricalData
+            Raised if there is less than 'lookback_days' days worth of asset
+            data available from the portfolio's current date.
         """
-        data_portal = self.data_portal
+        data_portal = self._data_portal
         current_date = self.current_date
         benchmark = self.benchmark_asset
         calendar = data_portal.trading_calendar
@@ -328,8 +343,7 @@ class Portfolio(object):
         )
 
         expected_shortfall = conditional_value_at_risk(
-            returns=asset_returns.dot(weights.values),
-            cutoff=DEFAULT_EXPECTED_SHORTFALL_CUTOFF,
+            returns=asset_returns.dot(weights.values), cutoff=cutoff,
         )
         self._expiring_cache.set(
             'expected_shortfall', expected_shortfall, current_date,

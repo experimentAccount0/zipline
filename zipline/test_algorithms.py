@@ -710,9 +710,10 @@ class TestPositionWeightsAlgorithm(TradingAlgorithm):
                 self.order(self.sid(s), amount)
             self.ordered = True
 
-        self.record(
-            position_weights=self.portfolio.current_portfolio_weights()
-        )
+        # self.record(
+        #     position_weights=self.portfolio.current_portfolio_weights()
+        # )
+        self.record(**dict(self.portfolio.current_portfolio_weights()))
         if self.record_expected_shortfall:
             self.record(
                 recorded_expected_shortfall=self.portfolio.expected_shortfall()
