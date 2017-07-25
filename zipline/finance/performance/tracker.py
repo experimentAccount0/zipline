@@ -490,7 +490,6 @@ class PerformanceTracker(object):
             benchmark_returns=bms,
             algorithm_leverages=acl,
             trading_calendar=self.trading_calendar,
-            treasury_curves=self.treasury_curves,
         )
 
         return risk_report.to_dict()

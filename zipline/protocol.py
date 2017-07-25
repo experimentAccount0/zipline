@@ -64,8 +64,8 @@ DIVIDEND_PAYMENT_FIELDS = [
     'share_count',
 ]
 
-DEFAULT_CVAR_LOOKBACK_DAYS = 504
-DEFAULT_CVAR_CUTOFF = 0.05
+DEFAULT_EXPECTED_SHORTFALL_LOOKBACK_DAYS = 504
+DEFAULT_EXPECTED_SHORTFALL_CUTOFF = 0.05
 
 
 class Event(object):
@@ -148,11 +148,11 @@ def asset_multiplier(asset):
     return asset.multiplier if isinstance(asset, Future) else 1
 
 
-def asset_returns_for_cvar(assets,
-                           benchmark,
-                           data_portal,
-                           end_date,
-                           lookback_days):
+def asset_returns_for_expected_shortfall(assets,
+                                         benchmark,
+                                         data_portal,
+                                         end_date,
+                                         lookback_days):
     if benchmark is not None:
         # If the algorithm held a position in the benchmark asset, include it
         # in the expected shortfall calculation. Otherwise, just use it as a
@@ -285,7 +285,8 @@ class Portfolio(object):
                 return cf
         return asset
 
-    def expected_shortfall(self, lookback_days=DEFAULT_CVAR_LOOKBACK_DAYS):
+    def expected_shortfall(
+            self, lookback_days=DEFAULT_EXPECTED_SHORTFALL_LOOKBACK_DAYS):
         """
         Function for computing expected shortfall (also known as CVaR, or
         Conditional Value at Risk) for the portfolio according to the assets
@@ -322,16 +323,18 @@ class Portfolio(object):
             self.asset_for_history_call, date=current_date,
         )
         assets = list(map(convert_futures, weights.index))
-        asset_returns = asset_returns_for_cvar(
+        asset_returns = asset_returns_for_expected_shortfall(
             assets, benchmark, data_portal, current_date, lookback_days,
         )
 
-        cvar = conditional_value_at_risk(
+        expected_shortfall = conditional_value_at_risk(
             returns=asset_returns.dot(weights.values),
-            cutoff=DEFAULT_CVAR_CUTOFF,
+            cutoff=DEFAULT_EXPECTED_SHORTFALL_CUTOFF,
         )
-        self._expiring_cache.set('expected_shortfall', cvar, current_date)
-        return cvar
+        self._expiring_cache.set(
+            'expected_shortfall', expected_shortfall, current_date,
+        )
+        return expected_shortfall
 
 
 class Account(object):

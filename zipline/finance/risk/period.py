@@ -37,9 +37,6 @@ from empyrical import (
 
 log = logbook.Logger('Risk Period')
 
-choose_treasury = functools.partial(risk.choose_treasury,
-                                    risk.select_treasury_duration)
-
 
 class RiskMetricsPeriod(object):
     def __init__(self, start_session, end_session, returns, trading_calendar,
