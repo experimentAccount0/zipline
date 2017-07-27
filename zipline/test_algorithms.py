@@ -76,7 +76,7 @@ import numpy as np
 from nose.tools import assert_raises
 
 from six.moves import range
-from six import itervalues
+from six import iteritems, itervalues
 
 from zipline.algorithm import TradingAlgorithm
 from zipline.api import (
@@ -710,10 +710,11 @@ class TestPositionWeightsAlgorithm(TradingAlgorithm):
                 self.order(self.sid(s), amount)
             self.ordered = True
 
-        # self.record(
-        #     position_weights=self.portfolio.current_portfolio_weights()
-        # )
-        self.record(**dict(self.portfolio.current_portfolio_weights()))
+        current_portfolio_weights = {
+            asset.symbol: weight for asset, weight in
+            iteritems(self.portfolio.current_portfolio_weights())
+        }
+        self.record(**current_portfolio_weights)
         if self.record_expected_shortfall:
             self.record(
                 recorded_expected_shortfall=self.portfolio.expected_shortfall()

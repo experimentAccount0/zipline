@@ -73,6 +73,7 @@ from zipline.finance.performance.period import PerformancePeriod
 import zipline.finance.risk as risk
 import zipline.protocol as zp
 from zipline.utils.dummy import DummyPortfolio
+from zipline.utils.numpy_utils import rolling_expected_shortfall
 from zipline.utils.pandas_utils import sliding_apply
 
 from . position_tracker import PositionTracker
@@ -501,7 +502,9 @@ class PerformanceTracker(object):
         # Create a data frame of asset weights on each day of the simulation.
         # If an asset was not held on a given date, it is assigned a weight of
         # zero.
-        weights = pd.DataFrame(self.position_weights, index=sim_params.sessions).fillna(0.0)
+        weights = pd.DataFrame(
+            self.position_weights, index=sim_params.sessions,
+        ).fillna(0.0)
         weights_values = weights.values
 
         # If we are near the start date of our data, just use the data
@@ -522,25 +525,35 @@ class PerformanceTracker(object):
         )
         asset_returns_values = asset_returns.values
 
-        def rolling_shortfall():
-            expected_shortfall_cutoff = zp.DEFAULT_EXPECTED_SHORTFALL_CUTOFF
-            out = np.full(len(weights), np.nan)
+        # def rolling_expected_shortfall():
+        #     expected_shortfall_cutoff = zp.DEFAULT_EXPECTED_SHORTFALL_CUTOFF
+        #     out = np.full(len(weights), np.nan)
 
-            # Compute from back to front, since that simplifies the task of
-            # aligning the correct row of `weights with the correct slice of
-            # `asset_returns`.
-            last_end = -len(weights)
-            end = -1
-            while end >= last_end:
-                # TODO: Bail if we don't have enough input data.
-                start = end - lookback_days
-                rets = asset_returns_values[start:end].dot(weights_values[end])
-                out[end] = conditional_value_at_risk(
-                    rets, expected_shortfall_cutoff,
-                )
-                end -= 1
+        #     # Compute from back to front, since that simplifies the task of
+        #     # aligning the correct row of `weights with the correct slice of
+        #     # `asset_returns`.
+        #     last_end = -len(weights)
+        #     end = -1
+        #     while end >= last_end:
+        #         # TODO: Bail if we don't have enough input data.
+        #         start = end - lookback_days
+        #         rets = asset_returns_values[start:end].dot(weights_values[end])
+        #         out[end] = conditional_value_at_risk(
+        #             rets, expected_shortfall_cutoff,
+        #         )
+        #         end -= 1
 
-            return pd.Series(out, index=sim_params.sessions)
+        #     return pd.Series(out, index=sim_params.sessions)
+
+        expected_shortfalls = pd.Series(
+            rolling_expected_shortfall(
+                asset_returns=asset_returns_values,
+                weights=weights_values,
+                cutoff=zp.DEFAULT_EXPECTED_SHORTFALL_CUTOFF,
+            ),
+            index=sim_params.sessions,
+        )
+        return expected_shortfalls
 
         def expected_shortfall_of_df(df):
             """
@@ -571,16 +584,14 @@ class PerformanceTracker(object):
             ),
         )
 
-        # On the very first day of pricing data, expected shortfall cannot be
-        # computed because returns cannot be computed yet.
         if days_before_start == 0:
+            # On the very first day of pricing data, expected shortfall cannot
+            # be computed because returns cannot be computed yet.
             rolling_expected_shortfalls = \
                 pd.Series([np.NaN]).append(rolling_expected_shortfalls)
         else:
             rolling_expected_shortfalls = \
                 rolling_expected_shortfalls[days_before_start - 1:]
         rolling_expected_shortfalls.index = sim_params.sessions
-
-        alt_rolling_expected_shortfalls = rolling_shortfall()
 
         return rolling_expected_shortfalls

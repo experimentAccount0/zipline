@@ -488,3 +488,30 @@ def changed_locations(a, include_first):
         return indices
 
     return hstack([[0], indices])
+
+
+def rolling_expected_shortfall(asset_returns, weights, cutoff, window_length):
+    out = np.full(len(weights), np.nan)
+    num_asset_returns_days = len(asset_returns)
+    num_days_to_compute = len(weights)
+
+    # Compute from back to front, since that simplifies the task of aligning
+    # the correct row of 'weights' with the correct slice of 'asset_returns'.
+    last_start = -num_asset_returns_days
+    last_end = -num_days_to_compute
+    end = -1
+    while end >= last_end:
+        start = end - window_length
+        if start < last_start:
+            raise ValueError(
+                'Insufficient asset returns of length {0} to compute {1} days '
+                'worth of expected shortfall values with a window length of '
+                '{2}.'.format(
+                    num_asset_returns_days, num_days_to_compute, window_length,
+                )
+            )
+        returns = asset_returns[start:end].dot(weights[end])
+        out[end] = conditional_value_at_risk(returns, cutoff)
+        end -= 1
+
+    return out

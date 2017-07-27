@@ -1433,12 +1433,13 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         """
         sids = (1, 1004)
         amounts = (1, 1)
+        sim_params = self.sim_params
         af = self.asset_finder
         equity_1, future_1004 = af.retrieve_all(sids)
 
         algo = TestPositionWeightsAlgorithm(
             sids_and_amounts=zip(sids, amounts),
-            sim_params=self.sim_params,
+            sim_params=sim_params,
             env=self.env,
             benchmark_sid=8554,
         )
@@ -1455,9 +1456,9 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
                 root_symbol='CL',
                 offset=offset,
                 roll_style='volume',
-                adjustment='mul'
+                adjustment='mul',
             )
-            for offset in 0, 1, 2, 3, 4
+            for offset in (0, 1, 2, 3, 4)
         ]
 
         # When we record position weights, we convert the actual contract we
@@ -1467,7 +1468,7 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # Since we always hold exactly one contract in sid 1004, we should see
         # our weight transition from being at offset 4 to offset 3, to offset
         # 2, etc.
-        for day, positions in pt_weights[1:].iteritems():
+        for day, positions in zip(sim_params.sessions[1:], pt_weights[1:]):
             if day < future_1000.auto_close_date:
                 expected_offset = 4
             elif day < future_1001.auto_close_date:
@@ -1517,8 +1518,14 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         )
 
         # Test the weights recorded in the algorithm itself.
-        assert_equal(daily_stats.position_weights[1], first_weights)
-        assert_equal(daily_stats.position_weights[2], second_weights)
+        assert_equal(daily_stats[equity_1.symbol][1], first_weights[equity_1])
+        assert_equal(daily_stats[equity_1.symbol][2], second_weights[equity_1])
+        assert_equal(
+            daily_stats[future_1004.symbol][1], first_weights[future_1004],
+        )
+        assert_equal(
+            daily_stats[future_1004.symbol][2], second_weights[future_1004],
+        )
 
         # $1000.00 --> $900.00 is a return of -10 percent.
         equity_low_returns = \
@@ -1538,25 +1545,27 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # average of their low returns. That is, this should be the average of
         # -10 percent (-0.1) and -13 percent (-0.13).
         first_expected_shortfall_value = sum(asset_returns * first_weights)
+        self.assertEqual(first_expected_shortfall_value, -0.115)
 
         # For the second set of weights, the value of our equity is slightly
         # higher than our future, so its weight is slightly higher. Therefore
         # the expected shortfall is not an exact average, but rather is tilted
         # closer to -0.1.
         second_expected_shortfall_value = sum(asset_returns * second_weights)
+        self.assertAlmostEqual(second_expected_shortfall_value, -0.1147458, 7)
 
         # We expect the first 248 days of expected shortfall values to be NaN
         # because we only compute it if we have at least a year's worth of data
         # to look back on. After 248 days, we expect the values to alternate
         # according to our alternating portfolio weights.
         expected = pd.Series(
-            index=self.sim_params.sessions, name='expected_shortfall',
+            index=sim_params.sessions, name='expected_shortfall',
         )
         expected[248::2] = second_expected_shortfall_value
         expected[249::2] = first_expected_shortfall_value
 
         actual = pd.DataFrame(
-            algo.risk_report['daily'], index=self.sim_params.sessions,
+            algo.risk_report['daily'], index=sim_params.sessions,
         )['expected_shortfall']
 
         assert_equal(actual, expected)

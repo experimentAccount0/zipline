@@ -269,7 +269,7 @@ class Portfolio(object):
         if isinstance(asset, Future):
             # Infer the offset of the given future by comparing it to the
             # upcoming closing contract according to the given date.
-            asset_finder = self.data_portal.asset_finder
+            asset_finder = self._data_portal.asset_finder
             offset = asset_finder.offset_of_contract(asset, date)
             return asset_finder.get_continuous_future(
                 root_symbol=asset.root_symbol,
