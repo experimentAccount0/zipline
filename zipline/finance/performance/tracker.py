@@ -545,15 +545,15 @@ class PerformanceTracker(object):
 
         #     return pd.Series(out, index=sim_params.sessions)
 
-        expected_shortfalls = pd.Series(
-            rolling_expected_shortfall(
-                asset_returns=asset_returns_values,
-                weights=weights_values,
-                cutoff=zp.DEFAULT_EXPECTED_SHORTFALL_CUTOFF,
-            ),
-            index=sim_params.sessions,
-        )
-        return expected_shortfalls
+        # expected_shortfalls = pd.Series(
+        #     rolling_expected_shortfall(
+        #         asset_returns=asset_returns_values,
+        #         weights=weights_values,
+        #         cutoff=zp.DEFAULT_EXPECTED_SHORTFALL_CUTOFF,
+        #     ),
+        #     index=sim_params.sessions,
+        # )
+        # return expected_shortfalls
 
         def expected_shortfall_of_df(df):
             """
