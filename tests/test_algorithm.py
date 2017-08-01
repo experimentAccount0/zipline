@@ -89,21 +89,22 @@ from zipline.finance.asset_restrictions import (
 )
 from zipline.testing import (
     FakeDataPortal,
+    RecordBatchBlotter,
     copy_market_data,
     create_daily_df_for_asset,
     create_data_portal,
     create_data_portal_from_trade_history,
     create_minute_df_for_asset,
+    make_alternating_1d_array,
     make_test_handler,
     make_trade_data_for_asset_info,
     parameter_space,
     str_to_seconds,
+    tmp_dir,
     tmp_trading_env,
     to_utc,
     trades_by_sid_to_dfs,
-    tmp_dir,
 )
-from zipline.testing import RecordBatchBlotter
 from zipline.testing.fixtures import (
     WithDataPortal,
     WithLogger,
@@ -184,6 +185,7 @@ from zipline.utils.control_flow import nullctx
 import zipline.utils.events
 from zipline.utils.events import date_rules, time_rules, Always
 import zipline.utils.factory as factory
+from zipline.utils.numpy_utils import int64_dtype
 
 # Because test cases appear to reuse some resources.
 
@@ -1252,12 +1254,12 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # alternate consistently from the same positive number to the same
         # negative number. This makes it easier to manually calculate expected
         # shortfall.
-        #
-        # The code for creating an alternating array was found here:
-        # https://stackoverflow.com/a/7154925
-        prices = np.empty(len(sessions))
-        prices[::2] = 900
-        prices[1::2] = 1000
+        prices = make_alternating_1d_array(
+            length=len(sessions),
+            first_value=900,
+            second_value=1000,
+            dtype=int64_dtype,
+        )
         frame = pd.DataFrame(
             {
                 'open': prices,
@@ -1413,13 +1415,13 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # to day, meaning returns will alternate consistently from the same
         # positive number to the same negative number. This makes it easier to
         # manually calculate expected shortfall.
-        #
-        # The code for creating an alternating array was found here:
-        # https://stackoverflow.com/a/7154925
+        prices = make_alternating_1d_array(
+            length=len(session_starts),
+            first_value=87,
+            second_value=100,
+            dtype=int64_dtype,
+        )
         start_indexes = frame.index.get_indexer(session_starts)
-        prices = np.empty(len(session_starts))
-        prices[::2] = 87
-        prices[1::2] = 100
         frame.iloc[start_indexes] = np.tile(prices[:, np.newaxis], (1, 5))
         frame['volume'] = 100
         frame.fillna(method='ffill', inplace=True)

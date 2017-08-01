@@ -1196,6 +1196,18 @@ def create_empty_splits_mergers_frame():
     )
 
 
+def make_alternating_1d_array(length,
+                              first_value=0,
+                              second_value=1,
+                              dtype=None):
+    if dtype is None:
+        dtype = type(first_value)
+    alternating = np.empty(length, dtype=dtype)
+    alternating[::2] = first_value
+    alternating[1::2] = second_value
+    return alternating
+
+
 def make_alternating_boolean_array(shape, first_value=True):
     """
     Create a 2D numpy array with the given shape containing alternating values

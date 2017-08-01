@@ -27,6 +27,7 @@ from .core import (  # noqa
     empty_asset_finder,
     empty_assets_db,
     empty_trading_env,
+    make_alternating_1d_array,
     make_alternating_boolean_array,
     make_cascading_boolean_array,
     make_test_handler,
