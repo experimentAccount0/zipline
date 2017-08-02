@@ -87,6 +87,7 @@ from zipline.finance.asset_restrictions import (
     StaticRestrictions,
     RESTRICTION_STATES,
 )
+import zipline.protocol as zp
 from zipline.testing import (
     FakeDataPortal,
     RecordBatchBlotter,
@@ -1240,9 +1241,10 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
 
     DATA_PORTAL_DAILY_HISTORY_PREFETCH = 0
 
-    ASSET_FINDER_EQUITY_SIDS = (1, 2, 8554)
-    ASSET_FINDER_EQUITY_SYMBOLS = ('A', 'B', 'SPY')
+    ASSET_FINDER_EQUITY_SIDS = (1, 2, 3, 8554)
+    ASSET_FINDER_EQUITY_SYMBOLS = ('A', 'B', 'C', 'SPY')
 
+    # Dates and prices for testing equities and futures that need fill data.
     equity_2_start_date = pd.Timestamp('2015-01-06', tz='UTC')
     equity_2_start_price = 249
     future_fv_start_date = pd.Timestamp('2015-01-06', tz='UTC')
@@ -1259,6 +1261,18 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         sessions = cls.equity_daily_bar_days
         calendar = cls.trading_calendar
 
+        def frame(prices, index=sessions):
+            return pd.DataFrame(
+                {
+                    'open': prices,
+                    'high': prices,
+                    'low': prices,
+                    'close': prices,
+                    'volume': 20000,
+                },
+                index=index,
+            )
+
         # Set our equity to have alternating price values, meaning returns will
         # alternate consistently from the same positive number to the same
         # negative number. This makes it easier to manually calculate expected
@@ -1269,34 +1283,20 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
             second_value=1000,
             dtype=int64_dtype,
         )
-        frame = pd.DataFrame(
-            {
-                'open': prices,
-                'high': prices,
-                'low': prices,
-                'close': prices,
-                'volume': 20000,
-            },
-            index=sessions,
-        )
-        yield 1, frame
+        yield 1, frame(prices)
 
         start_price = cls.equity_2_start_price
         dates_alive = sessions[sessions.get_loc(cls.equity_2_start_date):]
         prices = np.arange(start_price, start_price + len(dates_alive))
-        frame = pd.DataFrame(
-            {
-                'open': prices,
-                'high': prices,
-                'low': prices,
-                'close': prices,
-                'volume': 20000,
-            },
-            index=dates_alive,
-        )
-        # Yield a copy of the data frame because we are taking a slice of it.
-        # yield 2, frame.loc[cls.equity_2_start_date:].copy()
-        yield 2, frame
+        yield 2, frame(prices, dates_alive)
+
+        #
+        returns = [0, 0, 0, 0, 0, 0, -0.02, 1.0 / 49.0, -0.05, 1.0 / 19.0]
+        returns *= 5
+        while len(returns) < len(sessions) - 1:
+            returns.append(0)
+        prices = prices_with_returns(initial_price=50, returns=returns)
+        yield 3, frame(prices)
 
         benchmark_returns = make_alternating_1d_array(
             length=len(sessions) - 1,
@@ -1307,17 +1307,7 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         prices = prices_with_returns(
             initial_price=1050, returns=benchmark_returns,
         )
-        frame = pd.DataFrame(
-            {
-                'open': prices,
-                'high': prices,
-                'low': prices,
-                'close': prices,
-                'volume': 20000,
-            },
-            index=sessions,
-        )
-        yield 8554, frame
+        yield 8554, frame(prices)
 
     @classmethod
     def make_futures_info(cls):
@@ -1637,6 +1627,55 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         )['expected_shortfall']
 
         assert_equal(actual, expected)
+
+    def test_expected_shortfall_averaging(self):
+        """
+        Test an equity with more than one low returns value included in the
+        expected shortfall calculation.
+        """
+        calendar = self.trading_calendar
+
+        # Order the amount of Equity(3) such that its weight in the portfolio
+        # is 1.
+        order_amount = self.sim_params.capital_base / 50
+        start_date = (
+            self.START_DATE +
+            (zp.DEFAULT_EXPECTED_SHORTFALL_MINIMUM_DAYS * calendar.day)
+        )
+        sim_params = self.custom_sim_params(start_date=start_date)
+        algo = TestPositionWeightsAlgorithm(
+            sids_and_amounts=[(3, order_amount)],
+            sim_params=sim_params,
+            env=self.env,
+            benchmark_sid=8554,
+        )
+        daily_stats = algo.run(self.data_portal)
+
+        recorded_weights = daily_stats['C']
+        self.assertTrue(np.isnan(recorded_weights[0]))
+        self.assertTrue((recorded_weights[1:].round(4) == 1).all())
+
+        # Equity(3) has five days of -0.05 returns, five days of -0.02 returns,
+        # and the rest are 0% returns. After 252 days of data and using the
+        # bottom 5% of returns values, we should be using 252 * 0.05 = 13 data
+        # points in the expected shortfall calculation.
+        actual = pd.DataFrame(algo.risk_report['daily'])['expected_shortfall']
+        expected = (
+            -0.05 * (5.0 / 13.0) +
+            -0.02 * (5.0 / 13.0) +
+            0.0 * (2.0 / 13.0)
+        )
+        self.assertAlmostEqual(actual[1], expected, 5)
+
+        # By the 248th day we have 500 data points, so the expected shortfall
+        # calculation should be using 500 * 0.05 = 25 data points, and it
+        # should be much more heavily weighted towards zero.
+        expected = (
+            -0.05 * (5 / 25.0) +
+            -0.02 * (5 / 25.0) +
+            0.0 * (15 / 25.0)
+        )
+        self.assertAlmostEqual(actual[247], expected, 5)
 
     def test_expected_shortfall_method(self):
         """

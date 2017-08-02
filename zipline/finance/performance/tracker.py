@@ -560,7 +560,7 @@ class PerformanceTracker(object):
             Given a data frame indexed by date, compute its expected shortfall
             according to the asset weights on the last date of the index.
             """
-            if len(df) < lookback_days / 2:
+            if len(df) < zp.DEFAULT_EXPECTED_SHORTFALL_MINIMUM_DAYS:
                 return np.NaN
 
             date_to_use = df.index[-1]
