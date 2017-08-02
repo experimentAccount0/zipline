@@ -99,6 +99,7 @@ from zipline.testing import (
     make_test_handler,
     make_trade_data_for_asset_info,
     parameter_space,
+    prices_with_returns,
     str_to_seconds,
     tmp_dir,
     tmp_trading_env,
@@ -185,7 +186,7 @@ from zipline.utils.control_flow import nullctx
 import zipline.utils.events
 from zipline.utils.events import date_rules, time_rules, Always
 import zipline.utils.factory as factory
-from zipline.utils.numpy_utils import int64_dtype
+from zipline.utils.numpy_utils import float64_dtype, int64_dtype
 
 # Because test cases appear to reuse some resources.
 
@@ -1234,6 +1235,9 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
     SIM_PARAMS_END = pd.Timestamp('2016-02-03', tz='UTC')
 
     SIM_PARAMS_CAPITAL_BASE = 2000
+    # SIM_PARAMS_DATA_FREQUENCY = 'minute'
+    # SIM_PARAMS_EMISSION_RATE = 'minute'
+
     DATA_PORTAL_DAILY_HISTORY_PREFETCH = 0
 
     ASSET_FINDER_EQUITY_SIDS = (1, 2, 8554)
@@ -1249,6 +1253,7 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
     @classmethod
     def make_equity_daily_bar_data(cls):
         sessions = cls.equity_daily_bar_days
+        calendar = cls.trading_calendar
 
         # Set our equity to have alternating price values, meaning returns will
         # alternate consistently from the same positive number to the same
@@ -1272,7 +1277,7 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         )
         yield 1, frame
 
-        prices = np.arange(len(sessions))
+        prices = np.arange(len(sessions)) - 3
         frame = pd.DataFrame(
             {
                 'open': prices,
@@ -1286,12 +1291,21 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # Yield a copy of the data frame because we are taking a slice of it.
         yield 2, frame.loc[cls.equity_2_start_date:].copy()
 
+        benchmark_returns = make_alternating_1d_array(
+            length=len(sessions) - 1,
+            first_value=0.04,
+            second_value=-0.04,
+            dtype=float64_dtype,
+        )
+        prices = prices_with_returns(
+            initial_price=1050, returns=benchmark_returns,
+        )
         frame = pd.DataFrame(
             {
-                'open': 1234,
-                'high': 1234,
-                'low': 1234,
-                'close': 1234,
+                'open': prices,
+                'high': prices,
+                'low': prices,
+                'close': prices,
                 'volume': 20000,
             },
             index=sessions,
@@ -1300,6 +1314,8 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
 
     @classmethod
     def make_futures_info(cls):
+        cls.future_fv_start_date = pd.Timestamp('2015-01-06', tz='UTC')
+
         # Create a chain of contracts expiring every six months, encompassing
         # at least two years of contracts so that we have enough data to
         # perform expected shortfall calculations.
@@ -1386,20 +1402,31 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
                     'exchange': 'CME',
                     'multiplier': 10,
                 },
+                1009: {
+                    'symbol': 'FVX16',
+                    'root_symbol': 'FV',
+                    'start_date': cls.future_fv_start_date,
+                    'end_date': cls.END_DATE,
+                    'auto_close_date': cls.END_DATE,
+                    'exchange': 'CME',
+                    'multiplier': 10,
+                },
             },
             orient='index',
         )
 
     @classmethod
     def make_future_minute_bar_data(cls):
-        trading_calendar = cls.trading_calendars[Equity]
+        calendar = cls.trading_calendar
 
-        minutes = trading_calendar.minutes_for_sessions_in_range(
+        sessions = calendar.sessions_in_range(cls.START_DATE, cls.END_DATE)
+        session_starts = calendar.session_opens_in_range(
             cls.START_DATE, cls.END_DATE,
         )
-        session_starts = trading_calendar.session_opens_in_range(
+        minutes = calendar.minutes_for_sessions_in_range(
             cls.START_DATE, cls.END_DATE,
         )
+
         frame = pd.DataFrame(
             {
                 'open': np.NaN,
@@ -1416,7 +1443,7 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # positive number to the same negative number. This makes it easier to
         # manually calculate expected shortfall.
         prices = make_alternating_1d_array(
-            length=len(session_starts),
+            length=len(sessions),
             first_value=87,
             second_value=100,
             dtype=int64_dtype,
@@ -1426,7 +1453,23 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         frame['volume'] = 100
         frame.fillna(method='ffill', inplace=True)
 
-        return ((sid, frame) for sid in cls.asset_finder.futures_sids)
+        for sid in cls.asset_finder.futures_sids:
+            if sid != 1009:
+                yield (sid, frame)
+
+        prices = np.arange(len(sessions)) - 3
+        frame = pd.DataFrame(
+            {
+                'open': prices,
+                'high': prices,
+                'low': prices,
+                'close': prices,
+                'volume': 20000,
+            },
+            index=sessions,
+        )
+        # Yield a copy of the data frame because we are taking a slice of it.
+        yield 1009, frame.loc[cls.future_fv_start_date:].copy()
 
     def test_expected_shortfall(self):
         """
@@ -1561,7 +1604,7 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # to look back on. After 248 days, we expect the values to alternate
         # according to our alternating portfolio weights.
         expected = pd.Series(
-            index=sim_params.sessions, name='expected_shortfall',
+            data=np.nan, index=sim_params.sessions, name='expected_shortfall',
         )
         expected[248::2] = second_expected_shortfall_value
         expected[249::2] = first_expected_shortfall_value
@@ -1627,9 +1670,10 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         calculations use the benchmark pricing data during that period.
         """
         algo = TestPositionWeightsAlgorithm(
-            sids_and_amounts=[(2, 1)],
+            sids_and_amounts=[(2, 400)],
             start=self.equity_2_start_date,
             end=self.sim_params.end_session,
+            # sim_params=self.sim_params,
             env=self.env,
             benchmark_sid=8554,
         )
@@ -1640,8 +1684,32 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # expected shortfall should always be greater than zero. However, since
         # the benchmark's prices should be filled in for the first year when
         # computing expected shortfall for Equity 2, we actually expect it to
-        # always be zero.
-        self.assertTrue((daily_stats.expected_shortfall == 0).all())
+        # always be -0.04.
+        self.assertEqual(daily_stats.expected_shortfall[0], 0)
+        self.assertTrue(
+            (daily_stats.expected_shortfall[1:].round(5) == -0.04).all()
+        )
+
+        algo = TestPositionWeightsAlgorithm(
+            sids_and_amounts=[(1009, 40)],
+            start=self.equity_2_start_date,
+            end=self.sim_params.end_session,
+            # sim_params=self.sim_params,
+            env=self.env,
+            benchmark_sid=8554,
+        )
+        algo.run(self.data_portal)
+        daily_stats = pd.DataFrame(algo.risk_report['daily'])
+
+        # Similarly, future 1009 has prices that are always increasing, so on
+        # its own its expected shortfall should always be greater than zero.
+        # However, since the benchmark's prices should be filled in for the
+        # first year when computing expected shortfall, we actually expect it
+        # to always be -0.04.
+        self.assertEqual(daily_stats.expected_shortfall[0], 0)
+        self.assertTrue(
+            (daily_stats.expected_shortfall[1:].round(5) == -0.04).all()
+        )
 
 
 class TestBeforeTradingStart(WithDataPortal,
@@ -4616,13 +4684,10 @@ class TestEquityAutoClose(WithTradingEnvironment, WithTmpDir, ZiplineTestCase):
                 self.tmpdir.getpath('testdaily.bcolz'),
             )
             minute_reader = BcolzMinuteBarReader(self.tmpdir.path)
-            first_trading_day = max(
-                daily_reader.first_trading_day,
-                minute_reader.first_trading_day,
-            )
             data_portal = DataPortal(
-                env.asset_finder, self.trading_calendar,
-                first_trading_day=first_trading_day,
+                env.asset_finder,
+                self.trading_calendar,
+                first_trading_day=minute_reader.first_trading_day,
                 equity_daily_reader=daily_reader,
                 equity_minute_reader=minute_reader,
             )

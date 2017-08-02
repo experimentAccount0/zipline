@@ -37,6 +37,7 @@ from .core import (  # noqa
     patch_read_csv,
     permute_rows,
     powerset,
+    prices_with_returns,
     product_upper_triangle,
     read_compressed,
     seconds_to_timestamp,

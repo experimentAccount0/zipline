@@ -1196,6 +1196,18 @@ def create_empty_splits_mergers_frame():
     )
 
 
+def prices_with_returns(initial_price, returns):
+    """
+    Create an array of prices that follow the given returns, beginning with the
+    specified starting price.
+    """
+    returns = np.array(returns)
+    out = np.empty(len(returns) + 1)
+    out[0] = initial_price
+    out[1:] = initial_price * (1 + returns).cumprod()
+    return out
+
+
 def make_alternating_1d_array(length,
                               first_value=0,
                               second_value=1,
