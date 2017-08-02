@@ -1243,10 +1243,14 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
     ASSET_FINDER_EQUITY_SIDS = (1, 2, 8554)
     ASSET_FINDER_EQUITY_SYMBOLS = ('A', 'B', 'SPY')
 
+    equity_2_start_date = pd.Timestamp('2015-01-06', tz='UTC')
+    equity_2_start_price = 249
+    future_fv_start_date = pd.Timestamp('2015-01-06', tz='UTC')
+    future_fv_start_price = 3
+
     @classmethod
     def make_equity_info(cls):
         equity_info = super(TestPortfolio, cls).make_equity_info()
-        cls.equity_2_start_date = pd.Timestamp('2015-01-06', tz='UTC')
         equity_info.loc[2, 'start_date'] = cls.equity_2_start_date
         return equity_info
 
@@ -1277,7 +1281,9 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         )
         yield 1, frame
 
-        prices = np.arange(len(sessions)) - 3
+        start_price = cls.equity_2_start_price
+        dates_alive = sessions[sessions.get_loc(cls.equity_2_start_date):]
+        prices = np.arange(start_price, start_price + len(dates_alive))
         frame = pd.DataFrame(
             {
                 'open': prices,
@@ -1286,10 +1292,11 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
                 'close': prices,
                 'volume': 20000,
             },
-            index=sessions,
+            index=dates_alive,
         )
         # Yield a copy of the data frame because we are taking a slice of it.
-        yield 2, frame.loc[cls.equity_2_start_date:].copy()
+        # yield 2, frame.loc[cls.equity_2_start_date:].copy()
+        yield 2, frame
 
         benchmark_returns = make_alternating_1d_array(
             length=len(sessions) - 1,
@@ -1314,8 +1321,6 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
 
     @classmethod
     def make_futures_info(cls):
-        cls.future_fv_start_date = pd.Timestamp('2015-01-06', tz='UTC')
-
         # Create a chain of contracts expiring every six months, encompassing
         # at least two years of contracts so that we have enough data to
         # perform expected shortfall calculations.
@@ -1457,7 +1462,9 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
             if sid != 1009:
                 yield (sid, frame)
 
-        prices = np.arange(len(sessions)) - 3
+        start_price = cls.future_fv_start_price
+        dates_alive = sessions[sessions.get_loc(cls.future_fv_start_date):]
+        prices = np.arange(start_price, start_price + len(dates_alive))
         frame = pd.DataFrame(
             {
                 'open': prices,
@@ -1466,10 +1473,26 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
                 'close': prices,
                 'volume': 20000,
             },
-            index=sessions,
+            index=dates_alive,
         )
         # Yield a copy of the data frame because we are taking a slice of it.
         yield 1009, frame.loc[cls.future_fv_start_date:].copy()
+
+    def custom_sim_params(self,
+                          start_date=None,
+                          end_date=None,
+                          capital_base=None,
+                          data_frequency=None,
+                          emission_rate=None,
+                          trading_calendar=None):
+        return factory.create_simulation_parameters(
+            start=start_date or self.sim_params.start_session,
+            end=end_date or self.sim_params.end_session,
+            capital_base=capital_base or self.sim_params.capital_base,
+            data_frequency=data_frequency or self.sim_params.data_frequency,
+            emission_rate=emission_rate or self.sim_params.emission_rate,
+            trading_calendar=trading_calendar or self.trading_calendar,
+        )
 
     def test_expected_shortfall(self):
         """
@@ -1626,15 +1649,13 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         env = self.env
         data_portal = self.data_portal
         calendar = self.trading_calendar
-        end_date = self.sim_params.end_session
 
         # We do not allow users to call the expected shortfall method within a
         # year of the beginning of data, so this algorithm should fail.
         algo = TestPositionWeightsAlgorithm(
             sids_and_amounts=zip(sids, amounts),
             record_cvar=True,
-            start=self.START_DATE,
-            end=end_date,
+            sim_params=self.sim_params,
             env=env,
             benchmark_sid=8554,
         )
@@ -1645,11 +1666,11 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # the Portfolio method, then assert that it is consistent with the
         # expected shortfall values calculated at the end of the backtest.
         start_date = pd.Timestamp('2016-01-06', tz='UTC')
+        end_date = self.sim_params.end_session
         algo = TestPositionWeightsAlgorithm(
             sids_and_amounts=zip(sids, amounts),
             record_cvar=True,
-            start=start_date,
-            end=end_date,
+            sim_params=self.custom_sim_params(start_date=start_date),
             env=env,
             benchmark_sid=8554,
         )
@@ -1664,48 +1685,44 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
 
         assert_equal(daily_stats.recorded_expected_shortfall, expected)
 
-    def test_expected_shortfall_fill_with_benchmark(self):
+    @parameterized.expand([
+        (2, equity_2_start_date, equity_2_start_price),
+        (1009, future_fv_start_date, future_fv_start_price),
+    ])
+    def test_expected_shortfall_fill_with_benchmark(self,
+                                                    sid,
+                                                    start_date,
+                                                    order_price):
         """
-        Equity 2 starts a year late, so verify that its expected shortfall
-        calculations use the benchmark pricing data during that period.
+        Equity 2 and future 1009 start a year late, so verify that their
+        expected shortfall calculations use the benchmark pricing data during
+        that period.
         """
+        sim_params = self.custom_sim_params(start_date=start_date)
+
+        # Order the amount of assets such that their weight in the portfolio is
+        # 1. The reason we need to add 1 to the price is because the order does
+        # not go through until the day after it was placed, at which point the
+        # price has gone up by 1.
+        order_amount = sim_params.capital_base / (order_price + 1)
+        if sid == 1009:
+            future_1009 = self.asset_finder.retrieve_asset(sid)
+            order_amount = order_amount / future_1009.multiplier
+
         algo = TestPositionWeightsAlgorithm(
-            sids_and_amounts=[(2, 400)],
-            start=self.equity_2_start_date,
-            end=self.sim_params.end_session,
-            # sim_params=self.sim_params,
+            sids_and_amounts=[(sid, order_amount)],
+            sim_params=sim_params,
             env=self.env,
             benchmark_sid=8554,
         )
         algo.run(self.data_portal)
         daily_stats = pd.DataFrame(algo.risk_report['daily'])
 
-        # Equity 2 has prices that are always increasing, so on its own its
-        # expected shortfall should always be greater than zero. However, since
-        # the benchmark's prices should be filled in for the first year when
-        # computing expected shortfall for Equity 2, we actually expect it to
-        # always be -0.04.
-        self.assertEqual(daily_stats.expected_shortfall[0], 0)
-        self.assertTrue(
-            (daily_stats.expected_shortfall[1:].round(5) == -0.04).all()
-        )
-
-        algo = TestPositionWeightsAlgorithm(
-            sids_and_amounts=[(1009, 40)],
-            start=self.equity_2_start_date,
-            end=self.sim_params.end_session,
-            # sim_params=self.sim_params,
-            env=self.env,
-            benchmark_sid=8554,
-        )
-        algo.run(self.data_portal)
-        daily_stats = pd.DataFrame(algo.risk_report['daily'])
-
-        # Similarly, future 1009 has prices that are always increasing, so on
-        # its own its expected shortfall should always be greater than zero.
-        # However, since the benchmark's prices should be filled in for the
-        # first year when computing expected shortfall, we actually expect it
-        # to always be -0.04.
+        # The assets being tested have prices that are always increasing, so on
+        # their own their expected shortfall should always be greater than
+        # zero. However, since the benchmark's prices should be filled in for
+        # the first year when computing expected shortfall, we actually expect
+        # it to always be -0.04.
         self.assertEqual(daily_stats.expected_shortfall[0], 0)
         self.assertTrue(
             (daily_stats.expected_shortfall[1:].round(5) == -0.04).all()
