@@ -505,7 +505,6 @@ class PerformanceTracker(object):
         weights = pd.DataFrame(
             self.position_weights, index=sim_params.sessions,
         ).fillna(0.0)
-        weights_values = weights.values
 
         # If we are near the start date of our data, just use the data
         # available. Otherwise, use the full default number of lookback days.
@@ -523,75 +522,14 @@ class PerformanceTracker(object):
             end_date=sim_params.end_session,
             lookback_days=len(sim_params.sessions) + days_before_start,
         )
-        asset_returns_values = asset_returns.values
 
-        # def rolling_expected_shortfall():
-        #     expected_shortfall_cutoff = zp.DEFAULT_EXPECTED_SHORTFALL_CUTOFF
-        #     out = np.full(len(weights), np.nan)
-
-        #     # Compute from back to front, since that simplifies the task of
-        #     # aligning the correct row of `weights with the correct slice of
-        #     # `asset_returns`.
-        #     last_end = -len(weights)
-        #     end = -1
-        #     while end >= last_end:
-        #         # TODO: Bail if we don't have enough input data.
-        #         start = end - lookback_days
-        #         rets = asset_returns_values[start:end].dot(weights_values[end])
-        #         out[end] = conditional_value_at_risk(
-        #             rets, expected_shortfall_cutoff,
-        #         )
-        #         end -= 1
-
-        #     return pd.Series(out, index=sim_params.sessions)
-
-        # expected_shortfalls = pd.Series(
-        #     rolling_expected_shortfall(
-        #         asset_returns=asset_returns_values,
-        #         weights=weights_values,
-        #         cutoff=zp.DEFAULT_EXPECTED_SHORTFALL_CUTOFF,
-        #     ),
-        #     index=sim_params.sessions,
-        # )
-        # return expected_shortfalls
-
-        def expected_shortfall_of_df(df):
-            """
-            Given a data frame indexed by date, compute its expected shortfall
-            according to the asset weights on the last date of the index.
-            """
-            if len(df) < zp.DEFAULT_EXPECTED_SHORTFALL_MINIMUM_DAYS:
-                return np.NaN
-
-            date_to_use = df.index[-1]
-            try:
-                weights_to_use = weights.loc[date_to_use]
-            except KeyError:
-                return np.NaN
-
-            return conditional_value_at_risk(
-                returns=df.dot(weights_to_use.values),
+        return pd.Series(
+            rolling_expected_shortfall(
+                asset_returns=asset_returns.values,
+                weights=weights.values,
                 cutoff=zp.DEFAULT_EXPECTED_SHORTFALL_CUTOFF,
-            )
-
-        # Compute rolling expected shortfall over the returns data frame.
-        rolling_expected_shortfalls = pd.Series(
-            sliding_apply(
-                df=asset_returns.fillna(0),
-                window_length=lookback_days,
-                f=expected_shortfall_of_df,
-                min_periods=1,
+                window_length=zp.DEFAULT_EXPECTED_SHORTFALL_LOOKBACK_DAYS,
+                min_periods=zp.DEFAULT_EXPECTED_SHORTFALL_MINIMUM_DAYS,
             ),
+            index=sim_params.sessions,
         )
-
-        if days_before_start == 0:
-            # On the very first day of pricing data, expected shortfall cannot
-            # be computed because returns cannot be computed yet.
-            rolling_expected_shortfalls = \
-                pd.Series([np.NaN]).append(rolling_expected_shortfalls)
-        else:
-            rolling_expected_shortfalls = \
-                rolling_expected_shortfalls[days_before_start - 1:]
-        rolling_expected_shortfalls.index = sim_params.sessions
-
-        return rolling_expected_shortfalls

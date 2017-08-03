@@ -26,6 +26,8 @@ from numpy import (
 from numpy.lib.stride_tricks import as_strided
 from toolz import flip
 
+from empyrical import conditional_value_at_risk
+
 uint8_dtype = dtype('uint8')
 bool_dtype = dtype('bool')
 
@@ -490,28 +492,46 @@ def changed_locations(a, include_first):
     return hstack([[0], indices])
 
 
-def rolling_expected_shortfall(asset_returns, weights, cutoff, window_length):
-    out = np.full(len(weights), np.nan)
+def rolling_expected_shortfall(asset_returns,
+                               weights,
+                               cutoff,
+                               window_length,
+                               min_periods=None):
     num_asset_returns_days = len(asset_returns)
     num_days_to_compute = len(weights)
+    out = np.full(num_days_to_compute, np.nan)
+
+    if min_periods is None:
+        min_periods = window_length
+    elif min_periods > window_length:
+        raise ValueError(
+            "'min_periods' argument ({0}) can't be more than the given window "
+            "length ({1}).".format(min_periods, window_length)
+        )
 
     # Compute from back to front, since that simplifies the task of aligning
     # the correct row of 'weights' with the correct slice of 'asset_returns'.
-    last_start = -num_asset_returns_days
-    last_end = -num_days_to_compute
-    end = -1
-    while end >= last_end:
-        start = end - window_length
-        if start < last_start:
-            raise ValueError(
-                'Insufficient asset returns of length {0} to compute {1} days '
-                'worth of expected shortfall values with a window length of '
-                '{2}.'.format(
-                    num_asset_returns_days, num_days_to_compute, window_length,
-                )
-            )
-        returns = asset_returns[start:end].dot(weights[end])
-        out[end] = conditional_value_at_risk(returns, cutoff)
+    end = num_asset_returns_days
+    days_left = num_days_to_compute
+    while days_left:
+        day_being_computed = days_left - 1
+
+        if end < min_periods:
+            # Any remaining values of 'out' that did not have enough data to
+            # compute should just remain NaN.
+            break
+        elif end < window_length:
+            # If we do not have enough data left to compute over the full
+            # window length, but are still within the bounds of 'min_periods',
+            # just use whatever data is available.
+            start = 0
+        else:
+            start = end - window_length
+
+        returns = asset_returns[start:end].dot(weights[day_being_computed])
+        out[day_being_computed] = conditional_value_at_risk(returns, cutoff)
+
         end -= 1
+        days_left -= 1
 
     return out
