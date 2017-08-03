@@ -1287,7 +1287,10 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         prices = np.arange(start_price, start_price + len(dates_alive))
         yield 2, frame(prices, dates_alive)
 
-        #
+        # Create a price series according to how we want returns to look.
+        # Include five returns values of -0.05, five of -0.02, and the rest are
+        # zero or greater. This allows for testing expected shortfall using an
+        # easily known average of low returns.
         returns = [0, 0, 0, 0, 0, 0, -0.02, 1.0 / 49.0, -0.05, 1.0 / 19.0]
         returns *= 5
         while len(returns) < len(sessions) - 1:
