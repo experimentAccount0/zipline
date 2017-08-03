@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
-
 import logbook
 
 from six import iteritems
@@ -22,7 +20,6 @@ from six import iteritems
 import numpy as np
 import pandas as pd
 
-from . import risk
 from . risk import check_entry
 
 from empyrical import (

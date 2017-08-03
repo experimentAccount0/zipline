@@ -62,11 +62,8 @@ from __future__ import division
 from functools import partial
 import logbook
 
-import numpy as np
 import pandas as pd
 from pandas.tseries.tools import normalize_date
-
-from empyrical import conditional_value_at_risk
 
 from zipline.errors import NoFurtherDataError
 from zipline.finance.performance.period import PerformancePeriod
@@ -74,7 +71,6 @@ import zipline.finance.risk as risk
 import zipline.protocol as zp
 from zipline.utils.dummy import DummyPortfolio
 from zipline.utils.numpy_utils import rolling_expected_shortfall
-from zipline.utils.pandas_utils import sliding_apply
 
 from . position_tracker import PositionTracker
 

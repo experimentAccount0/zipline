@@ -1236,8 +1236,6 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
     SIM_PARAMS_END = pd.Timestamp('2016-02-03', tz='UTC')
 
     SIM_PARAMS_CAPITAL_BASE = 2000
-    # SIM_PARAMS_DATA_FREQUENCY = 'minute'
-    # SIM_PARAMS_EMISSION_RATE = 'minute'
 
     DATA_PORTAL_DAILY_HISTORY_PREFETCH = 0
 
@@ -1259,7 +1257,6 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
     @classmethod
     def make_equity_daily_bar_data(cls):
         sessions = cls.equity_daily_bar_days
-        calendar = cls.trading_calendar
 
         def frame(prices, index=sessions):
             return pd.DataFrame(

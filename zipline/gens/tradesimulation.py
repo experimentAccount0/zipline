@@ -14,7 +14,6 @@
 # limitations under the License.
 from contextlib2 import ExitStack
 from copy import copy
-from empyrical import conditional_value_at_risk
 from logbook import Logger, Processor
 from pandas.tslib import normalize_date
 from zipline.finance.order import ORDER_STATUS
