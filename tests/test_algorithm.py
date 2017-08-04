@@ -1196,9 +1196,14 @@ class TestPositions(WithLogger,
         )
         daily_stats = algo.run(self.data_portal)
 
-        expected_position_weights = [
-            # No positions held on the first day.
-            pd.Series({}),
+        expected_index = self.trading_calendar.session_closes_in_range(
+            self.sim_params.sessions[0], self.sim_params.sessions[-1],
+        )
+        expected_index.name = None
+        expected_position_weights = {
+            # The first values are NaN because there are no positions held on
+            # the first day.
+            #
             # Each equity's position value is its price times the number of
             # shares held. In this example, we hold a long position in 2 shares
             # of equity_1 so its weight is (95.0 * 2) = 190.0 divided by the
@@ -1208,25 +1213,40 @@ class TestPositions(WithLogger,
             # For a futures contract, its weight is the unit price times number
             # of shares held times the multiplier. For future_1000, this is
             # (2.0 * 1 * 100) = 200.0 divided by total portfolio value.
-            pd.Series({
-                equity_1: 190.0 / (190.0 - 95.0 + 905.0),
-                equity_133: -95.0 / (190.0 - 95.0 + 905.0),
-                future_1000: 200.0 / (190.0 - 95.0 + 905.0),
-            }),
-            pd.Series({
-                equity_1: 200.0 / (200.0 - 100.0 + 905.0),
-                equity_133: -100.0 / (200.0 - 100.0 + 905.0),
-                future_1000: 200.0 / (200.0 - 100.0 + 905.0),
-            }),
-            pd.Series({
-                equity_1: 210.0 / (210.0 - 105.0 + 905.0),
-                equity_133: -105.0 / (210.0 - 105.0 + 905.0),
-                future_1000: 200.0 / (210.0 - 105.0 + 905.0),
-            }),
-        ]
+            equity_1.symbol: pd.Series(
+                [
+                    np.nan,
+                    190.0 / (190.0 - 95.0 + 905.0),
+                    200.0 / (200.0 - 100.0 + 905.0),
+                    210.0 / (210.0 - 105.0 + 905.0),
+                ],
+                index=expected_index,
+                name=equity_1.symbol,
+            ),
+            equity_133.symbol: pd.Series(
+                [
+                    np.nan,
+                    -95.0 / (190.0 - 95.0 + 905.0),
+                    -100.0 / (200.0 - 100.0 + 905.0),
+                    -105.0 / (210.0 - 105.0 + 905.0),
+                ],
+                index=expected_index,
+                name=equity_133.symbol,
+            ),
+            future_1000.symbol: pd.Series(
+                [
+                    np.nan,
+                    200.0 / (190.0 - 95.0 + 905.0),
+                    200.0 / (200.0 - 100.0 + 905.0),
+                    200.0 / (210.0 - 105.0 + 905.0),
+                ],
+                index=expected_index,
+                name=future_1000.symbol,
+            ),
+        }
 
-        for i, expected in enumerate(expected_position_weights):
-            assert_equal(daily_stats.iloc[i]['position_weights'], expected)
+        for symbol, expected in iteritems(expected_position_weights):
+            assert_equal(daily_stats[symbol], expected)
 
 
 class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):

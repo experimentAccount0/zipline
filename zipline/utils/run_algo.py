@@ -132,9 +132,9 @@ def _run(handle_data,
         env = TradingEnvironment(asset_db_path=connstr, environ=environ)
 
         first_daily_bar_day = \
-            bundle_data.equity_daily_bar_reader.first_trading_day,
+            bundle_data.equity_daily_bar_reader.first_trading_day
         first_minute_bar_day = \
-            bundle_data.equity_minute_bar_reader.first_trading_day,
+            bundle_data.equity_minute_bar_reader.first_trading_day
         first_trading_day = max(first_daily_bar_day, first_minute_bar_day)
 
         if first_daily_bar_day != first_minute_bar_day:
