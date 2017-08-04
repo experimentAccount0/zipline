@@ -1269,6 +1269,16 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
     future_fv_start_price = 3
 
     @classmethod
+    def init_class_fixtures(cls):
+        super(TestPortfolio, cls).init_class_fixtures()
+        cls.algorithm = toolz.partial(
+            TestPositionWeightsAlgorithm,
+            env=cls.env,
+            benchmark_sid=8554,
+            calculate_expected_shortfall=True,
+        )
+
+    @classmethod
     def make_equity_info(cls):
         equity_info = super(TestPortfolio, cls).make_equity_info()
         equity_info.loc[2, 'start_date'] = cls.equity_2_start_date
@@ -1417,7 +1427,7 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
                     'exchange': 'CME',
                     'multiplier': 10,
                 },
-                1009: {
+                2000: {
                     'symbol': 'FVX16',
                     'root_symbol': 'FV',
                     'start_date': cls.future_fv_start_date,
@@ -1469,7 +1479,7 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         frame.fillna(method='ffill', inplace=True)
 
         for sid in cls.asset_finder.futures_sids:
-            if sid != 1009:
+            if sid != 2000:
                 yield (sid, frame)
 
         start_price = cls.future_fv_start_price
@@ -1486,7 +1496,7 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
             index=dates_alive,
         )
         # Yield a copy of the data frame because we are taking a slice of it.
-        yield 1009, frame.loc[cls.future_fv_start_date:].copy()
+        yield 2000, frame.loc[cls.future_fv_start_date:].copy()
 
     def custom_sim_params(self,
                           start_date=None,
@@ -1515,11 +1525,8 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         af = self.asset_finder
         equity_1, future_1004 = af.retrieve_all(sids)
 
-        algo = TestPositionWeightsAlgorithm(
-            sids_and_amounts=zip(sids, amounts),
-            sim_params=sim_params,
-            env=self.env,
-            benchmark_sid=8554,
+        algo = self.algorithm(
+            sids_and_amounts=zip(sids, amounts), sim_params=sim_params,
         )
         daily_stats = algo.run(self.data_portal)
 
@@ -1663,11 +1670,8 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
             (zp.DEFAULT_EXPECTED_SHORTFALL_MINIMUM_DAYS * calendar.day)
         )
         sim_params = self.custom_sim_params(start_date=start_date)
-        algo = TestPositionWeightsAlgorithm(
-            sids_and_amounts=[(3, order_amount)],
-            sim_params=sim_params,
-            env=self.env,
-            benchmark_sid=8554,
+        algo = self.algorithm(
+            sids_and_amounts=[(3, order_amount)], sim_params=sim_params,
         )
         daily_stats = algo.run(self.data_portal)
 
@@ -1705,18 +1709,15 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         amounts = (1, 1)
         equity_1, future_1004 = self.asset_finder.retrieve_all(sids)
 
-        env = self.env
         data_portal = self.data_portal
         calendar = self.trading_calendar
 
         # We do not allow users to call the expected shortfall method within a
         # year of the beginning of data, so this algorithm should fail.
-        algo = TestPositionWeightsAlgorithm(
+        algo = self.algorithm(
             sids_and_amounts=zip(sids, amounts),
             record_cvar=True,
             sim_params=self.sim_params,
-            env=env,
-            benchmark_sid=8554,
         )
         with self.assertRaises(InsufficientHistoricalData):
             algo.run(data_portal)
@@ -1726,12 +1727,10 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # expected shortfall values calculated at the end of the backtest.
         start_date = pd.Timestamp('2016-01-06', tz='UTC')
         end_date = self.sim_params.end_session
-        algo = TestPositionWeightsAlgorithm(
+        algo = self.algorithm(
             sids_and_amounts=zip(sids, amounts),
             record_cvar=True,
             sim_params=self.custom_sim_params(start_date=start_date),
-            env=env,
-            benchmark_sid=8554,
         )
         daily_stats = algo.run(data_portal)
         daily_stats.index = daily_stats.index.normalize()
@@ -1746,14 +1745,14 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
 
     @parameterized.expand([
         (2, equity_2_start_date, equity_2_start_price),
-        (1009, future_fv_start_date, future_fv_start_price),
+        (2000, future_fv_start_date, future_fv_start_price),
     ])
     def test_expected_shortfall_fill_with_benchmark(self,
                                                     sid,
                                                     start_date,
                                                     order_price):
         """
-        Equity 2 and future 1009 start a year late, so verify that their
+        Equity 2 and future 2000 start a year late, so verify that their
         expected shortfall calculations use the benchmark pricing data during
         that period.
         """
@@ -1764,15 +1763,12 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # not go through until the day after it was placed, at which point the
         # price has gone up by 1.
         order_amount = sim_params.capital_base / (order_price + 1)
-        if sid == 1009:
-            future_1009 = self.asset_finder.retrieve_asset(sid)
-            order_amount = order_amount / future_1009.multiplier
+        if sid == 2000:
+            future_2000 = self.asset_finder.retrieve_asset(sid)
+            order_amount = order_amount / future_2000.multiplier
 
-        algo = TestPositionWeightsAlgorithm(
-            sids_and_amounts=[(sid, order_amount)],
-            sim_params=sim_params,
-            env=self.env,
-            benchmark_sid=8554,
+        algo = self.algorithm(
+            sids_and_amounts=[(sid, order_amount)], sim_params=sim_params,
         )
         algo.run(self.data_portal)
         daily_stats = pd.DataFrame(algo.risk_report['daily'])

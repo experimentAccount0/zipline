@@ -62,6 +62,7 @@ from __future__ import division
 from functools import partial
 import logbook
 
+import numpy as np
 import pandas as pd
 from pandas.tseries.tools import normalize_date
 
@@ -459,7 +460,7 @@ class PerformanceTracker(object):
 
         return daily_update
 
-    def handle_simulation_end(self, data_portal):
+    def handle_simulation_end(self, data_portal, calculate_expected_shortfall):
         """
         When the simulation is complete, run the full period risk report
         and send it out on the results socket.
@@ -478,7 +479,10 @@ class PerformanceTracker(object):
             index=self.cumulative_risk_metrics.cont_index,
             data=self.cumulative_risk_metrics.algorithm_returns_cont)
         acl = self.cumulative_risk_metrics.algorithm_cumulative_leverages
-        es = self._calculate_rolling_expected_shortfall(data_portal)
+        if calculate_expected_shortfall:
+            es = self._calculate_rolling_expected_shortfall(data_portal)
+        else:
+            es = pd.Series(np.nan, index=self.sim_params.sessions)
 
         risk_report = risk.RiskReport(
             algorithm_returns=ars,

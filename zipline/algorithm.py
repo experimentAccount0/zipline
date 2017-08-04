@@ -403,6 +403,12 @@ class TradingAlgorithm(object):
         if 'data_frequency' in kwargs:
             self.data_frequency = kwargs.pop('data_frequency')
 
+        # Flag for whether or not to compute rolling expected shortfall of the
+        # algorithm.
+        self.calculate_expected_shortfall = kwargs.pop(
+            'calculate_expected_shortfall', False,
+        )
+
         # Prepare the algo for initialization
         self.initialized = False
         self.initialize_args = args

@@ -243,6 +243,7 @@ class AlgorithmSimulator(object):
 
             risk_message = perf_tracker.handle_simulation_end(
                 algo.data_portal,
+                calculate_expected_shortfall=algo.calculate_expected_shortfall,
             )
         yield risk_message
 
