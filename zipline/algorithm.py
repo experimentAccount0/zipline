@@ -404,7 +404,8 @@ class TradingAlgorithm(object):
             self.data_frequency = kwargs.pop('data_frequency')
 
         # Flag for whether or not to compute rolling expected shortfall of the
-        # algorithm.
+        # algorithm. By default this is False because it can be a costly
+        # computation, so only do it if explicitly specified.
         self.calculate_expected_shortfall = kwargs.pop(
             'calculate_expected_shortfall', False,
         )

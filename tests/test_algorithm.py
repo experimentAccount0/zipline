@@ -1661,6 +1661,7 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         expected shortfall calculation.
         """
         calendar = self.trading_calendar
+        equity_3 = self.asset_finder.retrieve_asset(3)
 
         # Order the amount of Equity(3) such that its weight in the portfolio
         # is 1.
@@ -1671,11 +1672,12 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         )
         sim_params = self.custom_sim_params(start_date=start_date)
         algo = self.algorithm(
-            sids_and_amounts=[(3, order_amount)], sim_params=sim_params,
+            sids_and_amounts=[(equity_3.sid, order_amount)],
+            sim_params=sim_params,
         )
         daily_stats = algo.run(self.data_portal)
 
-        recorded_weights = daily_stats['C']
+        recorded_weights = daily_stats[equity_3.symbol]
         self.assertTrue(np.isnan(recorded_weights[0]))
         self.assertTrue((recorded_weights[1:].round(4) == 1).all())
 
@@ -1685,9 +1687,9 @@ class TestPortfolio(WithDataPortal, WithSimParams, ZiplineTestCase):
         # points in the expected shortfall calculation.
         actual = pd.DataFrame(algo.risk_report['daily'])['expected_shortfall']
         expected = (
-            -0.05 * (5.0 / 13.0) +
-            -0.02 * (5.0 / 13.0) +
-            0.0 * (2.0 / 13.0)
+            -0.05 * (5 / 13.0) +
+            -0.02 * (5 / 13.0) +
+            0.0 * (3 / 13.0)
         )
         self.assertAlmostEqual(actual[1], expected, 5)
 

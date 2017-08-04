@@ -221,7 +221,6 @@ class Portfolio(object):
         self._data_portal = data_portal
         self._current_dt_callback = current_dt_callback
         self._expiring_cache = ExpiringCache()
-        self._cf_cache = {}
 
     def __repr__(self):
         return "Portfolio({0})".format(self.__dict__)

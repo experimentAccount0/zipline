@@ -285,7 +285,7 @@ class TestSplitPerformance(WithSimParams, WithPortfolio, ZiplineTestCase):
         # the total leftover cash is correct
         perf_tracker = perf.PerformanceTracker(self.sim_params,
                                                self.trading_calendar,
-                                               self.env,
+                                               self.asset_finder,
                                                self.portfolio)
 
         perf_tracker.position_tracker.positions[1] = \
