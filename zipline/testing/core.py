@@ -497,7 +497,7 @@ def create_data_portal(asset_finder, tempdir, sim_params, sids,
     if sim_params.data_frequency == 'minute':
         minutes = trading_calendar.minutes_in_range(
             sim_params.first_open,
-            sim_params.last_close
+            sim_params.last_close,
         )
         minute_path = write_minute_data(trading_calendar, tempdir, minutes,
                                         sids)
